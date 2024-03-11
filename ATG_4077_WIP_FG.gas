@@ -1,0 +1,152 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+' 10/29/09  ENM
+' Hooks 16,502 (pre-save) JB0052
+
+
+Function.Odbc.Connection!Con.Openconnection(Variable.Ambient.pdsn,Variable.Ambient.PUser,Variable.Ambient.PPass)
+
+Function.Intrinsic.Control.CallSub(Check_qty)
+
+F.ODBC.Connection!Con.Close
+
+Program.Sub.Main.End
+
+Program.Sub.Check_Qty.Start
+Variable.Local.sLoc.Declare(String)
+Variable.Local.sSql.declare(String)
+Variable.local.sJob.Declare(String)
+Variable.Local.sSuffix.Declare(String)
+Variable.local.sPL.Declare(String)
+Variable.Local.iQty.Declare(Float)
+Variable.Local.iQtyCompl.Declare(Float)
+Variable.Local.iQtyOrder.Declare(Float)
+Variable.Local.iAvailQty.Declare(Float)
+Variable.Local.fModifier.Declare(Float)
+Variable.Local.iQty1.Declare(Float)
+Variable.Local.iQtyN.Declare(Float)
+Variable.Local.sMsg.Declare(String)
+Variable.Local.sPartInfo.Declare(String)
+Variable.Local.iQtyCJ.Declare(Float)
+
+Variable.Local.sJob.Set(Variable.Passed.000003)
+'F.Intrinsic.String.Format(V.Local.sJob.Set,"      ",V.Local.sJob)
+F.Intrinsic.String.RPad(V.Local.sJob," ",6,V.Local.sJob)
+Variable.Local.sSuffix.Set(Variable.Passed.000004)
+Variable.Local.iQty.Set(Variable.Passed.000013)
+F.Intrinsic.Debug.SetLA("Job ",V.Local.sJob," Suffix ",V.Local.sSuffix," Qty ",V.Local.iQty)
+F.Intrinsic.Control.CallSub(Errorlog,"bFirst",True,"sText",V.Ambient.LastAction)
+Function.Intrinsic.String.Concat("select qty_completed, qty_order, Location from v_job_header where job =  '",Variable.Local.sJob,"' and suffix = '",Variable.Local.sSuffix,"'",Variable.Local.sSql)
+'F.Intrinsic.Debug.Stop
+F.Intrinsic.Debug.SetLA(V.Local.sSql)
+F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+Function.ODBC.Connection!Con.OpenRecordsetRO("rst1",Variable.Local.sSql)
+Function.Intrinsic.Control.If(Variable.ODBC.Con!rst1.EOF,<>,True)
+	Variable.Local.iQtyCompl.Set(Variable.ODBC.Con!rst1.FieldVal!qty_completed)
+	Variable.Local.iQtyOrder.Set(Variable.ODBC.Con!rst1.FieldVal!qty_order)
+	Variable.Local.sLoc.Set(Variable.ODBC.Con!rst1.FieldVal!Location)
+	F.Intrinsic.Debug.SetLA("Qty Complete ",V.Local.iQtyCompl," Qty Ordered ",V.Local.iQtyOrder," Loc ",V.Local.sLoc)
+	F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+	Function.Intrinsic.Math.Add(Variable.local.iQtyCompl,Variable.local.iQty,Variable.local.iAvailQty)
+	F.Intrinsic.Debug.SetLA("Available Qty ",V.Local.iAvailQty)
+	F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+	'F.Intrinsic.String.Concat("Select Seq,Description,Part,Units_Complete,Hours_Actual,Units from V_Job_Operations where Job = '",V.Local.sJob,"%' and Suffix='",V.Local.sSuffix,"' and LMO='M' order by Seq asc",V.Local.sSql)
+	F.Intrinsic.String.Concat("Select Seq,Description,Part,Units_Complete,Hours_Actual,Units from V_Job_Operations where Job like '",V.Local.sJob,"%' and Suffix='",V.Local.sSuffix,"' and LMO='M' order by Seq asc",V.Local.sSql)
+	F.Intrinsic.Debug.SetLA(V.Local.sSql)
+	F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+	F.ODBC.Connection!Con.OpenRecordsetRO("rstJOp",V.Local.sSql)
+	F.Intrinsic.Control.DoUntil(V.ODBC.Con!rstJOp.EOF,=,True)
+		'F.Intrinsic.Control.If(V.ODBC.Con!rst1.FieldVal!Qty_Completed,=,0)
+		'	F.Intrinsic.Control.ExitDo
+		'F.Intrinsic.Control.EndIf
+		V.Local.iQtyCJ.Set(V.ODBC.Con!rstJOp.FieldVal!Hours_Actual)
+		F.Intrinsic.Debug.SetLA("Job Actual Hours ",V.Local.iQtyCJ)
+		F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+		F.Intrinsic.Math.Mult(V.Local.iAvailQty,V.ODBC.Con!rstJOp.FieldVal!Units,V.Local.iQtyN)
+		F.Intrinsic.Debug.SetLA("Qty N ",V.Local.iQtyN)
+		F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+		F.Global.Inventory.GetPartInfo(V.ODBC.Con!rstJOp.FieldVal!Part,V.Local.sLoc,V.Local.sPartInfo)
+		F.Intrinsic.Control.If(V.Local.sPartInfo,<>,"***NOPARTFOUND***")
+			F.Intrinsic.String.Split(V.Local.sPartInfo,"*!*",V.Local.sPartInfo)
+			Variable.Local.sPL.Set(V.Local.sPartInfo(0))
+		F.Intrinsic.Control.EndIf
+		'F.Intrinsic.Debug.Stop
+		Function.Intrinsic.String.Concat("select modifier from atg_4077_pl_modifier where product_line like '",Variable.Local.sPL,"%'",Variable.Local.sSql)
+		Function.ODBC.Connection!Con.OpenRecordsetRO("rst2",Variable.Local.sSql)
+		Function.Intrinsic.Control.If(Variable.ODBC.Con!rst2.EOF,=,False)
+			Variable.Local.fModifier.Set(Variable.ODBC.Con!rst2.FieldVal!modifier)
+		Function.Intrinsic.Control.Else
+			Variable.Local.fModifier.Set(1)
+		Function.Intrinsic.control.endif
+		F.Intrinsic.Debug.SetLA("Modifier ",V.Local.fModifier)
+		F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+		F.ODBC.Con!rst2.Close
+		F.Intrinsic.Math.Mult(V.Local.iQtyN,V.Local.fModifier,V.Local.iQtyN)
+		'F.Intrinsic.String.Concat("Qty Needed ",V.Local.iQtyN,V.Local.sMsg)
+		F.Intrinsic.Debug.SetLA("Qty Needed ",V.Local.iQtyN)
+		F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+		'F.Intrinsic.UI.Msgbox(V.Local.sMsg)
+		'F.Intrinsic.String.Concat("Qty Completed ",V.Local.iQtyCJ,V.Local.sMsg)
+		F.Intrinsic.Debug.SetLA("Qty Completed ",V.Local.iQtyCJ)
+		F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+
+		'F.Intrinsic.UI.Msgbox(V.Local.sMsg)
+	'	Function.Intrinsic.Math.Mult(V.local.iAvailQty,V.local.iModifier,V.Local.iAvailQty)
+		Function.Intrinsic.Control.If(Variable.Local.iQtyN,>,Variable.Local.iQtyCJ)
+			Variable.Passed.777777.set(1)
+			F.Intrinsic.String.Concat("The WIP to FG transaction will not be completed, short on sequence ",V.ODBC.Con!rstJOp.FieldVal!Seq," - Part Number: '",V.ODBC.Con!rstJOp.FieldVal!Part,"' - Description: '",V.ODBC.Con!rstJOp.FieldVal!Description,"'",V.Local.sMsg)
+'			Function.Intrinsic.ui.msgbox("Transaction can not be completed.  Material issues are not sufficient to support the quantity moving to inventory.")
+			F.Intrinsic.UI.Msgbox(V.Local.sMsg)
+		F.Intrinsic.Control.EndIf
+		F.ODBC.Con!rstJOp.MoveNext
+	F.Intrinsic.Control.Loop
+F.Intrinsic.Debug.SetLA("Process Completed ")
+F.Intrinsic.Control.CallSub(Errorlog,"bFirst",False,"sText",V.Ambient.LastAction)
+F.ODBC.Con!rstJOp.Close
+F.ODBC.Con!rst1.Close
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Check_Qty.End
+
+Program.Sub.ErrorLog.Start
+V.Local.iHdl.Declare(Long)
+V.Local.sFile.Declare(String)
+V.Local.sLine.Declare(String)
+
+
+F.Intrinsic.File.GetHandle(V.Local.iHdl)
+F.Intrinsic.String.Concat(V.Caller.FilesDir,"\WIP2FG.log",V.Local.sFile)
+'F.Intrinsic.UI.Msgbox(V.Local.sFile)
+F.Intrinsic.Control.If(V.Args.bFirst,=,"True")
+	F.Intrinsic.File.OpenForWrite(V.Local.sFile,V.Local.iHdl)
+F.Intrinsic.Control.Else
+	F.Intrinsic.File.OpenForAppend(V.Local.sFile,V.Local.iHdl)
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.String.Concat(V.Ambient.NewLine,V.Ambient.Now,V.Ambient.Tab,V.Args.sText,V.local.sLine)
+
+F.Intrinsic.File.WriteLine(V.Local.iHdl,V.local.sLine)
+
+F.Intrinsic.File.CloseFile(V.Local.iHdl)
+
+Program.Sub.ErrorLog.End
+
+Program.Sub.Comments.Start
+${$0$}$ATG_4077_WIP_FG$}$SKT$}$5/23/2016
+${$1$}$$}$$}$0$}$16502$}$JBS0052-PRE-SAVE-HOOK$}$5/23/2016 12:09:43 PM$}$(Program: JB0052GI   ; Screen: JBS0052)
+
+Program.Sub.Comments.End
+
